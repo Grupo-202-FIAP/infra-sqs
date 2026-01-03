@@ -15,7 +15,7 @@ env:
 
 jobs:
   deploy-to-aws:
-    name: Terraform Infra
+    name: Terraform Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -26,6 +26,10 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.2.0
+
+      - name: Debug ARN
+        run: |
+          echo "ARN = arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-action-role"
 
       - name: Cache Terraform providers
         uses: actions/cache@v3
