@@ -68,7 +68,7 @@ Antes de usar esta infraestrutura, certifique-se de ter:
    - `s3:GetObject`, `s3:PutObject` (para o backend S3)
 
 4. **Bucket S3** para o backend do Terraform (já configurado no `providers.tf`):
-   - Bucket: `terraform-state-bucket-nextime`
+   - Bucket: `nextime-food-state-bucket`
    - Região: `us-east-1`
    - O bucket deve existir antes de executar `terraform init`
 
@@ -78,7 +78,7 @@ Antes de usar esta infraestrutura, certifique-se de ter:
 
 O backend está configurado no arquivo `infra/providers.tf`. Certifique-se de que:
 
-- O bucket `terraform-state-bucket-nextime` existe na região `us-east-1`
+- O bucket `nextime-food-state-bucket` existe na região `us-east-1`
 - Você tem permissões para acessar o bucket
 - A criptografia está habilitada (já configurada)
 
@@ -404,7 +404,7 @@ aws sts get-caller-identity
 Crie o bucket S3 antes de inicializar:
 
 ```bash
-aws s3 mb s3://terraform-state-bucket-nextime --region us-east-1
+aws s3 mb s3://nextime-food-state-bucket --region us-east-1
 ```
 
 ### Erro: "Queue name already exists"
