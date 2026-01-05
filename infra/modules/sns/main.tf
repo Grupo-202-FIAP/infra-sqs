@@ -32,9 +32,9 @@ resource "aws_sns_topic_subscription" "main" {
   topic_arn              = aws_sns_topic.main.arn
   protocol               = each.value.protocol
   endpoint               = each.value.endpoint
-  endpoint_auto_confirms = lookup(each.value, "endpoint_auto_confirms", false)
-  filter_policy          = lookup(each.value, "filter_policy", null)
-  filter_policy_scope    = lookup(each.value, "filter_policy_scope", null)
-  raw_message_delivery   = lookup(each.value, "raw_message_delivery", false)
-  redrive_policy         = lookup(each.value, "redrive_policy", null)
+  endpoint_auto_confirms = each.value.endpoint_auto_confirms
+  filter_policy          = each.value.filter_policy
+  filter_policy_scope    = each.value.filter_policy_scope
+  raw_message_delivery   = each.value.raw_message_delivery
+  redrive_policy         = each.value.redrive_policy
 }
