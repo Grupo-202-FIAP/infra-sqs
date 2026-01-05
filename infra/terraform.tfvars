@@ -68,3 +68,22 @@ sqs_queues = {
   }
 }
 
+# SNS Topics
+# sns_topics = {
+#   "order-topic" = {
+#     topic_name   = "order-topic"
+#     display_name = "Order Notifications Topic"
+#     subscriptions = {
+#       "email-subscription" = {
+#         protocol = "email"
+#         endpoint = "orders@example.com"
+#       },
+#       "sqs-subscription" = {
+#         protocol             = "sqs"
+#         endpoint             = "arn:aws:sqs:us-east-1:123456789012:order-queue"
+#         raw_message_delivery = true
+#       }
+#     }
+#   }
+# }
+
