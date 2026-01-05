@@ -15,3 +15,16 @@ module "sqs" {
   tags                       = merge(var.tags, each.value.tags)
 }
 
+module "sns" {
+  for_each             = var.sns_topics
+  source               = "./modules/sns"
+  topic_name           = each.value.topic_name
+  environment          = each.value.environment
+  queue_arn            = module.sqs[each.value.sqs_subscription_key].sqs_queue_arn
+  queue_url            = module.sqs[each.value.sqs_subscription_key].sqs_queue_url
+  raw_message_delivery = each.value.raw_message_delivery
+  tags                 = merge(var.tags, each.value.tags)
+
+  depends_on = [module.sqs]
+}
+

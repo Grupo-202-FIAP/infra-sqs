@@ -29,3 +29,16 @@ variable "sqs_queues" {
   default = {}
 }
 
+# SNS
+variable "sns_topics" {
+  description = "Mapa de tópicos SNS a serem criados. A chave é um identificador único e o valor contém as configurações do tópico."
+  type = map(object({
+    topic_name            = string
+    environment           = optional(string, "dev")
+    sqs_subscription_key  = string
+    raw_message_delivery  = optional(bool, false)
+    tags                  = optional(map(string), {})
+  }))
+  default = {}
+}
+
