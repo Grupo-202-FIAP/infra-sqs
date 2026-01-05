@@ -1,6 +1,6 @@
-# Infraestrutura SQS - Terraform
+# Infraestrutura SQS e SNS - Terraform
 
-Este projeto contém a infraestrutura como código (IaC) para criar e gerenciar filas Amazon SQS na AWS usando Terraform. A infraestrutura é modular e permite criar múltiplas filas SQS com configurações personalizadas.
+Este projeto contém a infraestrutura como código (IaC) para criar e gerenciar filas Amazon SQS e tópicos Amazon SNS na AWS usando Terraform. A infraestrutura é modular e permite criar múltiplas filas SQS e tópicos SNS com configurações personalizadas.
 
 ## 📋 Índice
 
@@ -12,19 +12,32 @@ Este projeto contém a infraestrutura como código (IaC) para criar e gerenciar 
 - [Variáveis](#variáveis)
 - [Outputs](#outputs)
 - [Módulo SQS](#módulo-sqs)
+- [Módulo SNS](#módulo-sns)
 - [Recursos Suportados](#recursos-suportados)
 - [Exemplos](#exemplos)
 
 ## 🎯 Visão Geral
 
-Esta infraestrutura permite criar e gerenciar filas SQS na AWS com suporte a:
+Esta infraestrutura permite criar e gerenciar filas SQS e tópicos SNS na AWS com suporte a:
 
+**SQS (Simple Queue Service):**
 - ✅ Múltiplas filas SQS configuráveis
 - ✅ Dead Letter Queue (DLQ) para tratamento de mensagens falhas
 - ✅ Criptografia com KMS
 - ✅ Políticas de acesso customizadas
-- ✅ Tags para organização e custos
 - ✅ Configurações avançadas (long polling, visibility timeout, etc.)
+
+**SNS (Simple Notification Service):**
+- ✅ Múltiplos tópicos SNS configuráveis
+- ✅ Subscrições múltiplas por tópico (email, SQS, Lambda, HTTP/HTTPS, etc.)
+- ✅ Tópicos FIFO com deduplicação
+- ✅ Criptografia com KMS
+- ✅ Políticas de acesso customizadas
+- ✅ Filter policies para subscrições
+- ✅ Raw message delivery
+
+**Geral:**
+- ✅ Tags para organização e custos
 - ✅ Backend S3 para armazenamento do state do Terraform
 
 ## 📁 Estrutura do Projeto
@@ -32,16 +45,20 @@ Esta infraestrutura permite criar e gerenciar filas SQS na AWS com suporte a:
 ```
 infra-sqs/
 ├── infra/
-│   ├── main.tf              # Módulo principal que instancia as filas SQS
+│   ├── main.tf              # Módulo principal que instancia SQS e SNS
 │   ├── variables.tf         # Variáveis do módulo raiz
 │   ├── outputs.tf           # Outputs da infraestrutura
 │   ├── providers.tf         # Configuração de providers e backend
 │   ├── terraform.tfvars     # Valores das variáveis (customize aqui)
 │   └── modules/
-│       └── sqs/
-│           ├── main.tf       # Recurso SQS
-│           ├── variables.tf # Variáveis do módulo SQS
-│           └── outputs.tf    # Outputs do módulo SQS
+│       ├── sqs/
+│       │   ├── main.tf       # Recurso SQS
+│       │   ├── variables.tf # Variáveis do módulo SQS
+│       │   └── outputs.tf    # Outputs do módulo SQS
+│       └── sns/
+│           ├── main.tf       # Recurso SNS
+│           ├── variables.tf # Variáveis do módulo SNS
+│           └── outputs.tf    # Outputs do módulo SNS
 └── README.md
 ```
 
@@ -60,12 +77,20 @@ Antes de usar esta infraestrutura, certifique-se de ter:
    ```
 
 3. **Permissões AWS** necessárias:
-   - `sqs:CreateQueue`
-   - `sqs:GetQueueAttributes`
-   - `sqs:SetQueueAttributes`
-   - `sqs:TagQueue`
-   - `kms:DescribeKey` (se usar criptografia KMS)
-   - `s3:GetObject`, `s3:PutObject` (para o backend S3)
+   - **SQS:**
+     - `sqs:CreateQueue`
+     - `sqs:GetQueueAttributes`
+     - `sqs:SetQueueAttributes`
+     - `sqs:TagQueue`
+   - **SNS:**
+     - `sns:CreateTopic`
+     - `sns:Subscribe`
+     - `sns:SetTopicAttributes`
+     - `sns:GetTopicAttributes`
+     - `sns:TagResource`
+   - **Geral:**
+     - `kms:DescribeKey` (se usar criptografia KMS)
+     - `s3:GetObject`, `s3:PutObject` (para o backend S3)
 
 4. **Bucket S3** para o backend do Terraform (já configurado no `providers.tf`):
    - Bucket: `nextime-food-state-bucket`
@@ -149,7 +174,7 @@ Para remover toda a infraestrutura:
 terraform destroy
 ```
 
-⚠️ **Atenção**: Isso irá deletar todas as filas SQS criadas!
+⚠️ **Atenção**: Isso irá deletar todas as filas SQS e tópicos SNS criados!
 
 ## 📝 Variáveis
 
@@ -160,6 +185,7 @@ terraform destroy
 | `region` | `string` | Região da AWS onde os recursos serão criados | - | ✅ Sim |
 | `tags` | `map(string)` | Tags globais aplicadas a todos os recursos | `{}` | ❌ Não |
 | `sqs_queues` | `map(object)` | Mapa de filas SQS a serem criadas | `{}` | ❌ Não |
+| `sns_topics` | `map(object)` | Mapa de tópicos SNS a serem criados | `{}` | ❌ Não |
 
 ### Variáveis do Objeto `sqs_queues`
 
@@ -180,9 +206,42 @@ Cada entrada no mapa `sqs_queues` pode conter as seguintes propriedades:
 | `queue_policy` | `string` | Política JSON para controle de acesso | `null` |
 | `tags` | `map(string)` | Tags específicas para esta fila | `{}` |
 
+### Variáveis do Objeto `sns_topics`
+
+Cada entrada no mapa `sns_topics` pode conter as seguintes propriedades:
+
+| Variável | Tipo | Descrição | Padrão |
+|----------|------|-----------|--------|
+| `topic_name` | `string` | Nome do tópico SNS | - |
+| `display_name` | `string` | Nome de exibição do tópico SNS | `null` |
+| `delivery_policy` | `string` | Política de entrega em formato JSON | `null` |
+| `fifo_topic` | `bool` | Se o tópico é FIFO (deve terminar com .fifo) | `false` |
+| `content_based_deduplication` | `bool` | Habilita deduplicação baseada em conteúdo (apenas FIFO) | `false` |
+| `kms_master_key_id` | `string` | ID da chave KMS para criptografia (opcional) | `null` |
+| `enable_topic_policy` | `bool` | Habilitar política de acesso customizada | `false` |
+| `topic_policy` | `string` | Política JSON para controle de acesso | `null` |
+| `subscriptions` | `map(object)` | Mapa de subscrições para o tópico | `{}` |
+| `tags` | `map(string)` | Tags específicas para este tópico | `{}` |
+
+### Variáveis do Objeto `subscriptions` (dentro de `sns_topics`)
+
+Cada entrada no mapa `subscriptions` pode conter as seguintes propriedades:
+
+| Variável | Tipo | Descrição | Padrão |
+|----------|------|-----------|--------|
+| `protocol` | `string` | Protocolo da subscrição (email, sqs, lambda, http, https, sms, etc.) | - |
+| `endpoint` | `string` | Endpoint da subscrição (email, ARN da fila, URL, etc.) | - |
+| `endpoint_auto_confirms` | `bool` | Auto-confirmação do endpoint | `false` |
+| `filter_policy` | `string` | Política de filtro em formato JSON | `null` |
+| `filter_policy_scope` | `string` | Escopo da política de filtro (MessageAttributes ou MessageBody) | `null` |
+| `raw_message_delivery` | `bool` | Entrega de mensagem raw (útil para SQS) | `false` |
+| `redrive_policy` | `string` | Política de redirecionamento para DLQ em formato JSON | `null` |
+
 ## 📤 Outputs
 
 A infraestrutura expõe os seguintes outputs:
+
+**SQS Outputs:**
 
 | Output | Descrição |
 |--------|-----------|
@@ -191,6 +250,17 @@ A infraestrutura expõe os seguintes outputs:
 | `sqs_queue_urls` | Mapa de URLs das filas SQS (chave: identificador, valor: URL) |
 | `sqs_queue_names` | Mapa de nomes das filas SQS (chave: identificador, valor: nome) |
 | `sqs_queues` | Mapa completo com todas as informações das filas (id, arn, url, name) |
+
+**SNS Outputs:**
+
+| Output | Descrição |
+|--------|-----------|
+| `sns_topic_ids` | Mapa de IDs dos tópicos SNS (chave: identificador, valor: ID) |
+| `sns_topic_arns` | Mapa de ARNs dos tópicos SNS (chave: identificador, valor: ARN) |
+| `sns_topic_names` | Mapa de nomes dos tópicos SNS (chave: identificador, valor: nome) |
+| `sns_topic_owners` | Mapa de proprietários dos tópicos SNS (chave: identificador, valor: ID da conta AWS) |
+| `sns_subscriptions` | Mapa de subscrições SNS criadas (chave: identificador do tópico, valor: mapa de ARNs das subscrições) |
+| `sns_topics` | Mapa completo com todas as informações dos tópicos (id, arn, name, owner, subscriptions) |
 
 ### Exemplo de Uso dos Outputs
 
@@ -204,6 +274,10 @@ terraform output sqs_queue_urls
 # Usar em outro módulo/stack
 output "queue_url" {
   value = module.sqs_infra.sqs_queue_urls["order-queue"]
+}
+
+output "topic_arn" {
+  value = module.sns_infra.sns_topic_arns["order-topic"]
 }
 ```
 
@@ -221,7 +295,7 @@ O módulo `sqs` é reutilizável e pode ser usado em outros projetos. Ele cria:
    - Criada apenas se `enable_queue_policy = true`
    - Permite controle granular de acesso
 
-### Outputs do Módulo
+### Outputs do Módulo SQS
 
 Cada instância do módulo retorna:
 
@@ -229,6 +303,36 @@ Cada instância do módulo retorna:
 - `sqs_queue_arn`: ARN da fila
 - `sqs_queue_url`: URL da fila
 - `sqs_queue_name`: Nome da fila
+
+## 🔔 Módulo SNS
+
+O módulo `sns` é reutilizável e pode ser usado em outros projetos. Ele cria:
+
+1. **Tópico SNS** (`aws_sns_topic.main`)
+   - Tópicos standard ou FIFO
+   - Criptografia KMS
+   - Políticas de entrega customizadas
+   - Tags automáticas
+
+2. **Política de Acesso** (`aws_sns_topic_policy.main`) - Opcional
+   - Criada apenas se `enable_topic_policy = true`
+   - Permite controle granular de acesso
+
+3. **Subscrições** (`aws_sns_topic_subscription.main`) - Opcional
+   - Suporte a múltiplos protocolos (email, sqs, lambda, http/https, sms, etc.)
+   - Filter policies para entrega condicional
+   - Raw message delivery para SQS
+   - Redrive policy para mensagens não entregues
+
+### Outputs do Módulo SNS
+
+Cada instância do módulo retorna:
+
+- `sns_topic_id`: ID do tópico
+- `sns_topic_arn`: ARN do tópico
+- `sns_topic_name`: Nome do tópico
+- `sns_topic_owner`: ID da conta AWS proprietária
+- `sns_subscriptions`: Mapa de ARNs das subscrições
 
 ## 🎛️ Recursos Suportados
 
@@ -305,6 +409,106 @@ sqs_queues = {
 }
 ```
 
+### SNS - Tópicos e Subscrições
+
+Para criar um tópico SNS com subscrições:
+
+```hcl
+sns_topics = {
+  "notificacoes-pedidos" = {
+    topic_name   = "notificacoes-pedidos"
+    display_name = "Notificações de Pedidos"
+    subscriptions = {
+      "email-admin" = {
+        protocol = "email"
+        endpoint = "admin@example.com"
+      },
+      "fila-processamento" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:order-queue"
+        raw_message_delivery = true
+      }
+    }
+  }
+}
+```
+
+### SNS - Tópicos FIFO
+
+Para criar um tópico FIFO com deduplicação:
+
+```hcl
+sns_topics = {
+  "ordem-pedidos" = {
+    topic_name                  = "ordem-pedidos.fifo"
+    fifo_topic                  = true
+    content_based_deduplication = true
+    subscriptions = {
+      "fila-fifo" = {
+        protocol = "sqs"
+        endpoint = "arn:aws:sqs:us-east-1:123456789012:ordem-pedidos.fifo"
+      }
+    }
+  }
+}
+```
+
+### SNS - Filter Policies
+
+Para usar filter policies nas subscrições:
+
+```hcl
+sns_topics = {
+  "eventos-sistema" = {
+    topic_name = "eventos-sistema"
+    subscriptions = {
+      "apenas-erros" = {
+        protocol = "email"
+        endpoint = "erros@example.com"
+        filter_policy = jsonencode({
+          event_type = ["error", "critical"]
+        })
+      }
+    }
+  }
+}
+```
+
+### Integração SNS + SQS
+
+Para criar um padrão Fan-out (SNS para múltiplas filas SQS):
+
+```hcl
+# Criar as filas SQS
+sqs_queues = {
+  "fila-servico-a" = {
+    queue_name = "fila-servico-a"
+  },
+  "fila-servico-b" = {
+    queue_name = "fila-servico-b"
+  }
+}
+
+# Criar tópico SNS com subscrições para as filas
+sns_topics = {
+  "topico-eventos" = {
+    topic_name = "topico-eventos"
+    subscriptions = {
+      "servico-a" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:fila-servico-a"
+        raw_message_delivery = true
+      },
+      "servico-b" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:fila-servico-b"
+        raw_message_delivery = true
+      }
+    }
+  }
+}
+```
+
 ## 💡 Exemplos
 
 ### Exemplo 1: Fila Simples
@@ -367,21 +571,124 @@ sqs_queues = {
 }
 ```
 
+### Exemplo 5: Tópico SNS Simples
+
+```hcl
+sns_topics = {
+  "topico-simples" = {
+    topic_name = "topico-simples"
+  }
+}
+```
+
+### Exemplo 6: Tópico SNS com Email
+
+```hcl
+sns_topics = {
+  "alertas" = {
+    topic_name   = "alertas"
+    display_name = "Sistema de Alertas"
+    subscriptions = {
+      "email-ops" = {
+        protocol = "email"
+        endpoint = "ops@example.com"
+      }
+    }
+  }
+}
+```
+
+### Exemplo 7: Tópico SNS com Múltiplas Subscrições
+
+```hcl
+sns_topics = {
+  "eventos-pedidos" = {
+    topic_name   = "eventos-pedidos"
+    display_name = "Eventos de Pedidos"
+    subscriptions = {
+      "email-notificacao" = {
+        protocol = "email"
+        endpoint = "pedidos@example.com"
+      },
+      "fila-processamento" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:order-processing-queue"
+        raw_message_delivery = true
+      },
+      "lambda-analytics" = {
+        protocol = "lambda"
+        endpoint = "arn:aws:lambda:us-east-1:123456789012:function:analytics-processor"
+      }
+    }
+  }
+}
+```
+
+### Exemplo 8: Infraestrutura Completa (SQS + SNS)
+
+```hcl
+# Filas SQS
+sqs_queues = {
+  "order-processing-queue" = {
+    queue_name                 = "order-processing-queue"
+    visibility_timeout_seconds = 300
+  },
+  "payment-processing-queue" = {
+    queue_name                 = "payment-processing-queue"
+    visibility_timeout_seconds = 180
+  }
+}
+
+# Tópicos SNS
+sns_topics = {
+  "order-events" = {
+    topic_name   = "order-events"
+    display_name = "Order Events Topic"
+    subscriptions = {
+      "order-queue" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:order-processing-queue"
+        raw_message_delivery = true
+      }
+    }
+    tags = {
+      Service = "order-service"
+    }
+  },
+  "payment-events" = {
+    topic_name   = "payment-events"
+    display_name = "Payment Events Topic"
+    subscriptions = {
+      "payment-queue" = {
+        protocol             = "sqs"
+        endpoint             = "arn:aws:sqs:us-east-1:123456789012:payment-processing-queue"
+        raw_message_delivery = true
+      }
+    }
+    tags = {
+      Service = "payment-service"
+    }
+  }
+}
+```
+
 ## 🔒 Segurança
 
 ### Boas Práticas Implementadas
 
 - ✅ Criptografia do state do Terraform no S3
-- ✅ Suporte a criptografia KMS nas filas
-- ✅ Políticas de acesso configuráveis
+- ✅ Suporte a criptografia KMS nas filas SQS e tópicos SNS
+- ✅ Políticas de acesso configuráveis para SQS e SNS
 - ✅ Tags para organização e governança
 
 ### Recomendações
 
 1. **Credenciais AWS**: Use IAM roles ou variáveis de ambiente, nunca hardcode credenciais
 2. **State File**: Mantenha o backend S3 com versionamento e criptografia habilitados
-3. **Políticas de Acesso**: Sempre defina políticas restritivas quando usar `enable_queue_policy`
+3. **Políticas de Acesso**: Sempre defina políticas restritivas quando usar `enable_queue_policy` ou `enable_topic_policy`
 4. **Tags**: Use tags consistentes para facilitar gestão de custos e compliance
+5. **Subscrições SNS**: Valide os endpoints antes de criar subscrições em produção
+6. **FIFO Topics**: Use tópicos FIFO quando a ordem das mensagens for crítica
 
 ## 🐛 Troubleshooting
 
@@ -409,12 +716,26 @@ aws s3 mb s3://nextime-food-state-bucket --region us-east-1
 
 ### Erro: "Queue name already exists"
 
-Os nomes de filas SQS devem ser únicos globalmente. Escolha um nome diferente.
+Os nomes de filas SQS devem ser únicos na conta AWS. Escolha um nome diferente.
+
+### Erro: "Topic name already exists"
+
+Os nomes de tópicos SNS devem ser únicos na conta AWS. Escolha um nome diferente.
+
+### Erro: "Subscription pending confirmation"
+
+Para subscrições de email ou HTTP/HTTPS, é necessário confirmar a subscrição através do link enviado. A subscrição ficará no estado "PendingConfirmation" até ser confirmada.
+
+### Erro: "Invalid parameter: Topic Name"
+
+Nomes de tópicos FIFO devem terminar com `.fifo`. Exemplo: `meu-topico.fifo`
 
 ## 📚 Referências
 
 - [Documentação AWS SQS](https://docs.aws.amazon.com/sqs/)
-- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue)
+- [Documentação AWS SNS](https://docs.aws.amazon.com/sns/)
+- [Terraform AWS Provider - SQS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue)
+- [Terraform AWS Provider - SNS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic)
 - [Terraform Documentation](https://www.terraform.io/docs)
 
 ## 📄 Licença
