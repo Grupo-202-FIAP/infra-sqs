@@ -12,6 +12,7 @@ Este projeto contém a infraestrutura como código (IaC) para criar e gerenciar 
 - [Variáveis](#variáveis)
 - [Outputs](#outputs)
 - [Módulo SQS](#módulo-sqs)
+- [Módulo SNS](#módulo-sns)
 - [Recursos Suportados](#recursos-suportados)
 - [Exemplos](#exemplos)
 
@@ -26,22 +27,27 @@ Esta infraestrutura permite criar e gerenciar filas SQS na AWS com suporte a:
 - ✅ Tags para organização e custos
 - ✅ Configurações avançadas (long polling, visibility timeout, etc.)
 - ✅ Backend S3 para armazenamento do state do Terraform
+- ✅ Criação de tópicos SNS e assinatura automática de filas SQS
 
 ## 📁 Estrutura do Projeto
 
 ```
 infra-sqs/
 ├── infra/
-│   ├── main.tf              # Módulo principal que instancia as filas SQS
+│   ├── main.tf              # Módulo principal que instancia as filas SQS e SNS
 │   ├── variables.tf         # Variáveis do módulo raiz
 │   ├── outputs.tf           # Outputs da infraestrutura
 │   ├── providers.tf         # Configuração de providers e backend
 │   ├── terraform.tfvars     # Valores das variáveis (customize aqui)
 │   └── modules/
-│       └── sqs/
-│           ├── main.tf       # Recurso SQS
-│           ├── variables.tf # Variáveis do módulo SQS
-│           └── outputs.tf    # Outputs do módulo SQS
+│       ├── sqs/
+│       │   ├── main.tf       # Recurso SQS
+│       │   ├── variables.tf # Variáveis do módulo SQS
+│       │   └── outputs.tf    # Outputs do módulo SQS
+│       └── sns/
+│           ├── main.tf       # Tópico SNS e assinatura SQS
+│           ├── variables.tf # Variáveis do módulo SNS
+│           └── outputs.tf    # Outputs do módulo SNS
 └── README.md
 ```
 
@@ -160,6 +166,7 @@ terraform destroy
 | `region` | `string` | Região da AWS onde os recursos serão criados | - | ✅ Sim |
 | `tags` | `map(string)` | Tags globais aplicadas a todos os recursos | `{}` | ❌ Não |
 | `sqs_queues` | `map(object)` | Mapa de filas SQS a serem criadas | `{}` | ❌ Não |
+| `sns_topics` | `map(object)` | Mapa de tópicos SNS a serem criados e assinaturas SQS | `{}` | ❌ Não |
 
 ### Variáveis do Objeto `sqs_queues`
 
@@ -180,6 +187,16 @@ Cada entrada no mapa `sqs_queues` pode conter as seguintes propriedades:
 | `queue_policy` | `string` | Política JSON para controle de acesso | `null` |
 | `tags` | `map(string)` | Tags específicas para esta fila | `{}` |
 
+### Variáveis do Objeto `sns_topics`
+
+| Variável | Tipo | Descrição | Padrão |
+|----------|------|-----------|--------|
+| `topic_name` | `string` | Nome do tópico SNS | - |
+| `environment` | `string` | Ambiente (dev, staging, production) | `"dev"` |
+| `sqs_subscription_key` | `string` | Chave da fila em `sqs_queues` que será assinada neste tópico | - |
+| `raw_message_delivery` | `bool` | Envia mensagem sem envelope JSON do SNS | `false` |
+| `tags` | `map(string)` | Tags específicas para este tópico | `{}` |
+
 ## 📤 Outputs
 
 A infraestrutura expõe os seguintes outputs:
@@ -191,6 +208,11 @@ A infraestrutura expõe os seguintes outputs:
 | `sqs_queue_urls` | Mapa de URLs das filas SQS (chave: identificador, valor: URL) |
 | `sqs_queue_names` | Mapa de nomes das filas SQS (chave: identificador, valor: nome) |
 | `sqs_queues` | Mapa completo com todas as informações das filas (id, arn, url, name) |
+| `sns_topic_ids` | Mapa de IDs dos tópicos SNS (chave: identificador, valor: ID) |
+| `sns_topic_arns` | Mapa de ARNs dos tópicos SNS (chave: identificador, valor: ARN) |
+| `sns_topic_names` | Mapa de nomes dos tópicos SNS (chave: identificador, valor: nome) |
+| `sns_subscription_arns` | Mapa de ARNs das subscriptions SNS (chave: identificador, valor: ARN) |
+| `sns_topics` | Mapa completo com todas as informações dos tópicos (id, arn, name, subscription_arn, subscription_id) |
 
 ### Exemplo de Uso dos Outputs
 
@@ -200,11 +222,7 @@ terraform output
 
 # Ver um output específico
 terraform output sqs_queue_urls
-
-# Usar em outro módulo/stack
-output "queue_url" {
-  value = module.sqs_infra.sqs_queue_urls["order-queue"]
-}
+terraform output sns_topic_arns
 ```
 
 ## 🧩 Módulo SQS
@@ -230,80 +248,25 @@ Cada instância do módulo retorna:
 - `sqs_queue_url`: URL da fila
 - `sqs_queue_name`: Nome da fila
 
-## 🎛️ Recursos Suportados
+## 🧩 Módulo SNS
 
-### Dead Letter Queue (DLQ)
+O módulo `sns` cria tópicos SNS e assina automaticamente uma fila SQS existente, além de aplicar a política necessária para permitir que o SNS publique na fila.
 
-Para configurar uma Dead Letter Queue, você precisa:
+1. **Tópico SNS** (`aws_sns_topic.payment_notification`)
+   - Tags herdadas do módulo raiz + tags específicas
+2. **Assinatura SQS** (`aws_sns_topic_subscription.sqs_subscription`)
+   - Assina a fila referenciada por `sqs_subscription_key`
+   - Suporta `raw_message_delivery`
+3. **Política da fila** (`aws_sqs_queue_policy.allow_sns`)
+   - Libera `sqs:SendMessage` apenas para o tópico SNS
 
-1. Criar uma fila DLQ primeiro
-2. Referenciar o ARN da DLQ na fila principal
+### Outputs do Módulo SNS
 
-```hcl
-sqs_queues = {
-  "dlq-exemplo" = {
-    queue_name = "dlq-exemplo"
-    # ... outras configurações
-  },
-  "fila-principal" = {
-    queue_name            = "fila-principal"
-    dead_letter_queue_arn = "arn:aws:sqs:us-east-1:123456789012:dlq-exemplo"
-    max_receive_count     = 3
-    # ... outras configurações
-  }
-}
-```
-
-### Criptografia KMS
-
-Para usar criptografia com uma chave KMS customizada:
-
-```hcl
-sqs_queues = {
-  "fila-criptografada" = {
-    queue_name        = "fila-criptografada"
-    kms_master_key_id = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-    # ... outras configurações
-  }
-}
-```
-
-### Política de Acesso Customizada
-
-Para adicionar uma política de acesso:
-
-```hcl
-sqs_queues = {
-  "fila-com-politica" = {
-    queue_name         = "fila-com-politica"
-    enable_queue_policy = true
-    queue_policy = jsonencode({
-      Version = "2012-10-17"
-      Statement = [{
-        Effect = "Allow"
-        Principal = "*"
-        Action = "sqs:SendMessage"
-        Resource = "*"
-      }]
-    })
-    # ... outras configurações
-  }
-}
-```
-
-### Long Polling
-
-Para habilitar long polling (reduz custos e latência):
-
-```hcl
-sqs_queues = {
-  "fila-long-polling" = {
-    queue_name              = "fila-long-polling"
-    receive_wait_time_seconds = 20  # Máximo 20 segundos
-    # ... outras configurações
-  }
-}
-```
+- `sns_topic_id`: ID do tópico
+- `sns_topic_arn`: ARN do tópico
+- `sns_topic_name`: Nome do tópico
+- `sns_subscription_arn`: ARN da assinatura
+- `sns_subscription_id`: ID da assinatura
 
 ## 💡 Exemplos
 
@@ -363,6 +326,29 @@ sqs_queues = {
   "notification-queue" = {
     queue_name              = "notification-queue"
     receive_wait_time_seconds = 20  # Long polling
+  }
+}
+```
+
+### Exemplo 5: Tópico SNS com assinatura SQS (payment-callback)
+
+```hcl
+sqs_queues = {
+  "payment-callback-queue" = {
+    queue_name          = "payment-callback-queue"
+    enable_queue_policy = true # necessário para receber política do SNS
+  }
+}
+
+sns_topics = {
+  "payment-callback" = {
+    topic_name           = "payment-callback"
+    environment          = "dev"
+    sqs_subscription_key = "payment-callback-queue"
+    raw_message_delivery = false
+    tags = {
+      Service = "Payment"
+    }
   }
 }
 ```
@@ -434,6 +420,4 @@ Para contribuir com este projeto:
 ---
 
 **Desenvolvido para nexTime-food** 🚀
-
-
 

@@ -64,7 +64,20 @@ sqs_queues = {
     receive_wait_time_seconds  = 0
     visibility_timeout_seconds = 30
     max_receive_count          = 3
-    enable_queue_policy        = false
+    enable_queue_policy        = true
+    queue_policy               = null # Será definida pelo módulo SNS
+  }
+}
+
+sns_topics = {
+  "payment-callback" = {
+    topic_name           = "payment-callback"
+    environment          = "dev"
+    sqs_subscription_key = "payment-callback-queue"
+    raw_message_delivery = false
+    tags = {
+      Service = "Payment"
+    }
   }
 }
 
